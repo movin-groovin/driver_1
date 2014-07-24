@@ -1,7 +1,8 @@
 
 #
 # http://www.antiwomen.ru/ff/viewtopic.php?t=34785&highlight=%CF%EB%E0%E2%EB%E5%ED%E8%E5+%F2%E8%F2%E0%ED%E0
-# http://www.linuxjournal.com/article/8110?page=0,1 - как читать - записывать файлы
+# http://webcache.googleusercontent.com/search?q=cache:t0tuTME9_d8J:memset.wordpress.com/2011/01/20/syscall-hijacking-dynamically-obtain-syscall-table-address-kernel-2-6-x/+&cd=4&hl=ru&ct=clnk&gl=ru
+# http://www.linuxjournal.com/article/8110?page=0,1 - как читать - записывать файлreset
 # http://habrahabr.ru/post/110369/
 # http://rus-linux.net/MyLDP/BOOKS/drivers/linux-device-drivers-00.html
 # http://rus-linux.net/kos.php?name=/papers/boot/index.html#toc
