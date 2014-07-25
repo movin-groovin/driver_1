@@ -67,7 +67,7 @@ int start (void) {
 	if (!sys_call_table) return EPERM;
 	
 	// disable memory protection to writing
-	asm("pushq %rax");
+/*	asm("pushq %rax");
 	asm("movq %cr0, %rax");
 	asm("andq $0xfffffffffffeffff, %rax");
 	asm("movq %rax, %cr0");
@@ -81,7 +81,7 @@ int start (void) {
 	asm("movq %cr0, %rax");
 	asm("xorq $0x0000000000001000, %rax");
 	asm("movq %rax, %cr0");
-	asm("popq %rax");
+	asm("popq %rax");*/
 	
 	
 	return 0;
@@ -89,7 +89,7 @@ int start (void) {
 
 void stop (void) {
 	// disable memory protection to writing
-	asm("pushq %rax");
+/*	asm("pushq %rax");
 	asm("movq %cr0, %rax");
 	asm("andq $0xfffffffffffeffff, %rax");
 	asm("movq %rax, %cr0");
@@ -102,7 +102,7 @@ void stop (void) {
 	asm("movq %cr0, %rax");
 	asm("xorq $0x0000000000001000, %rax");
 	asm("movq %rax, %cr0");
-	asm("popq %rax");
+	asm("popq %rax");*/
 	
 	printk ("Bye bye\n");
 	
