@@ -1,6 +1,7 @@
 
 #
 # http://www.antiwomen.ru/ff/viewtopic.php?t=34785&highlight=%CF%EB%E0%E2%EB%E5%ED%E8%E5+%F2%E8%F2%E0%ED%E0
+# http://www.ibm.com/developerworks/library/l-kernel-memory-access/ - access to user-mode memory from kernel-mode
 # http://habrahabr.ru/post/207122/ - write enable memory
 # https://www.thc.org/papers/LKM_HACKING.html
 # https://rdot.org/forum/showthread.php?t=1197
