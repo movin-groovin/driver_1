@@ -21,9 +21,10 @@
 # http://stackoverflow.com/questions/1184274/how-to-read-write-files-within-a-linux-kernel-module - file operations
 # 
 
-obj-m := second.o
-KDIR := /lib/modules/$(shell uname -r)/build
-PWD := $(shell pwd)
+CC=gcc -std=gnu99
+obj-m = second.o
+KDIR = /lib/modules/$(shell uname -r)/build
+PWD = $(shell pwd)
 
 default:
 	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) modules
