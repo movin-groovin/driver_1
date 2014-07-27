@@ -28,7 +28,7 @@ int clearDirEntries (struct linux_dirent64 *dirPtr, unsigned int len) {
 		tmpPtr = (struct linux_dirent64*)((char*)dirPtr + cur);
 #ifdef MY_OWN_DEBUG
 //
-// I don't know, but the right offset of the name of an emtry is d_type, not d_name
+// I don't know, but the right offset of the name of an entry is d_type, not d_name
 //
 		printk ("Entry name: %s\n", (char*)&dirPtr->d_type);
 #endif
