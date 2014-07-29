@@ -19,6 +19,8 @@
 
 #include <linux/file.h>
 #include <linux/syscalls.h>
+#include <linux/completion.h>
+#include <linux/kernel.h> // simple_strtoul
 
 
 
