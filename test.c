@@ -5,6 +5,9 @@
 #include <stdlib.h>
 
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 //#include <asm/atimic.h>
 
 struct ONE {
@@ -17,7 +20,7 @@ struct ONE {
 
 
 int main (int argc, char **argv) {
-	unsigned long a = 1;
+	/*unsigned long a = 1;
 	struct ONE one;
 	char *chPtr;
 	long val = strtoul ("qwert", &chPtr, 10);
@@ -28,7 +31,18 @@ int main (int argc, char **argv) {
 	//printf ("Str: %s\n", one.d_name);
 	
 	for (a = 0; a < argc; ++a) printf ("Str: %s\n", argv[a]);
-	pause ();
+	pause ();*/
+	
+	char *chPtr = "/proc/modules";
+	char buf1 [50], buf2[50];
+	int fd = open (chPtr, O_RDONLY, 0);
+	int ret = read (fd, buf1, 49);
+	buf1 [49] = '\0';
+	printf ("Pos: %d\n", lseek (fd, 0, SEEK_CUR));
+	printf ("lseek ret: %d\n", lseek (fd, 0, SEEK_SET));
+	ret = read (fd, buf2, 49);
+	buf2[49] = '\0';
+	printf ("1 - %s\n\n2 - %s\n", buf1, buf2);
 
 	
 	return 0;
