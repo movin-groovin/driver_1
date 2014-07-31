@@ -8,7 +8,19 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/dirent.h>
-#include <asm/atomic.h>
+#include <linux/atomic.h>
+#include <asm/current.h> // current
+#include <linux/fdtable.h> // struct files_struct
+#include <linux/spinlock.h>
+#include <linux/fs.h> // struct file at line 976
+#include <linux/path.h> // struct path
+#include <linux/dcache.h> // struct dentry
+#include <linux/sched.h> // struct task_struct
+
+#include <linux/file.h>
+#include <linux/syscalls.h>
+#include <linux/completion.h>
+#include <linux/kernel.h> // simple_strtoul
 
 
 
