@@ -156,6 +156,7 @@ long newSetreuid (uid_t ruid, uid_t euid) {
 	
 #ifdef MY_OWN_DEBUG
 	printk ("Intercepted function setreuid\n");
+	printk ("Number of counter: %lld\n", atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls));
 #endif
 	
 	atomic64_inc (& ssPtr[SYS_SETREUID_NUM].numOfCalls);
