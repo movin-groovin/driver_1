@@ -22,7 +22,7 @@
 # 
 
 CC=gcc -std=gnu99
-obj-m = second.o
+obj-m = 1234DEADBEAF4321.o first.o
 KDIR = /lib/modules/$(shell uname -r)/build
 PWD = $(shell pwd)
 
