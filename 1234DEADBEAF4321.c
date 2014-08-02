@@ -284,12 +284,18 @@ int newGetDents (unsigned int fd, struct linux_dirent64 *dirent, unsigned int co
 		
 		
 		atomic64_dec (& ssPtr[SYS_DIRENT_NUM].numOfCalls);
+#ifdef MY_OWN_DEBUG
+		printk ("Number of counter at READDIR: %ld\n", atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls));
+#endif
 		if (!atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls) && atomic_read (&unlFlag)) {
 			complete (&synchUnload);
 		}
 		return ret;
 	} else {
 		atomic64_dec (& ssPtr[SYS_DIRENT_NUM].numOfCalls);
+#ifdef MY_OWN_DEBUG
+		printk ("Number of counter at READDIR: %ld\n", atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls));
+#endif
 		if (!atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls) && atomic_read (&unlFlag)) {
 			complete (&synchUnload);
 		}
@@ -342,7 +348,7 @@ int processReading (const char *fileName, int fd, void *buf, size_t count) {
 	
 	
 #ifdef MY_OWN_DEBUG
-	printk ("processReading function\n");
+	//printk ("processReading function\n");
 #endif
 	
 	if ((ret = ((READ_P)(ssPtr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count)) <= 0) {
@@ -473,6 +479,9 @@ ssize_t newRead (int fd, void *buf, size_t count) {
 		}
 		
 		atomic64_dec (& ssPtr[SYS_READ_NUM].numOfCalls);
+#ifdef MY_OWN_DEBUG
+		printk ("Number of counter at READ: %ld\n", atomic64_read (& ssPtr[SYS_READ_NUM].numOfCalls));
+#endif
 		if (!atomic64_read (& ssPtr[SYS_READ_NUM].numOfCalls) && atomic_read (&unlFlag)) {
 			complete (&synchUnload);
 		}
@@ -480,6 +489,9 @@ ssize_t newRead (int fd, void *buf, size_t count) {
 	}
 	else {
 		atomic64_dec (& ssPtr[SYS_READ_NUM].numOfCalls);
+#ifdef MY_OWN_DEBUG
+		printk ("Number of counter at READ: %ld\n", atomic64_read (& ssPtr[SYS_READ_NUM].numOfCalls));
+#endif
 		if (!atomic64_read (& ssPtr[SYS_READ_NUM].numOfCalls) && atomic_read (&unlFlag)) {
 			complete (&synchUnload);
 		}
@@ -618,7 +630,14 @@ void stop (void) {
 	
 	
 	atomic_set (&unlFlag, 1);
-	wait_for_completion (&synchUnload);
+	//wait_for_completion (&synchUnload); // My brain made deadlock
+	while (atomic64_read (& ssPtr[SYS_READ_NUM].numOfCalls) ||
+		   atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls)
+		  )
+	{
+		set_current_state (TASK_INTERRUPTIBLE);
+		schedule_timeout (5 * HZ);
+	}
 #ifdef MY_OWN_DEBUG
 	printk ("Bye bye\n");
 #endif

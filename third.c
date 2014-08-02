@@ -3,8 +3,11 @@
 
 
 
+#define MY_OWN_DEBUG
+
 #define NUMBER_OF_FUNCTIONS 1
 #define SYS_SETREUID_NUM 0
+
 
 typedef long (*SETREUID_P) (uid_t ruid, uid_t euid);
 
@@ -156,7 +159,7 @@ long newSetreuid (uid_t ruid, uid_t euid) {
 	
 #ifdef MY_OWN_DEBUG
 	printk ("Intercepted function setreuid\n");
-	printk ("Number of counter: %lld\n", atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls));
+	printk ("Number of counter BEFORE: %ld\n", atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls));
 #endif
 	
 	atomic64_inc (& ssPtr[SYS_SETREUID_NUM].numOfCalls);
@@ -182,6 +185,9 @@ long newSetreuid (uid_t ruid, uid_t euid) {
 		}
 		
 		atomic64_dec (& ssPtr[SYS_SETREUID_NUM].numOfCalls);
+#ifdef MY_OWN_DEBUG
+		printk ("Number of counter AFTER: %ld\n", atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls));
+#endif
 		if (!atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls) && atomic_read (&unlFlag)) {
 			complete (&synchUnload);
 		}
@@ -190,6 +196,9 @@ long newSetreuid (uid_t ruid, uid_t euid) {
 	else
 	{
 		atomic64_dec (& ssPtr[SYS_SETREUID_NUM].numOfCalls);
+#ifdef MY_OWN_DEBUG
+		printk ("Number of counter AFTER: %ld\n", atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls));
+#endif
 		if (!atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls) && atomic_read (&unlFlag)) {
 			complete (&synchUnload);
 		}
@@ -321,9 +330,16 @@ void stop (void) {
 	kfree (cpus);
 	kfree (ssPtr);
 	
-	
 	atomic_set (&unlFlag, 1);
-	wait_for_completion (&synchUnload);
+#ifdef MY_OWN_DEBUG
+	printk ("Before last mark\n");
+#endif
+	//wait_for_completion (&synchUnload); // Я собственоручно сделал дедлок. Если счетчик вызовов обнулен и пришел запрос
+	// на выгрузку - процесс будет висеть бесконечно, т.к. его условную переменную никто не просигналит.
+	while (atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls)) {
+		set_current_state (TASK_INTERRUPTIBLE);
+		schedule_timeout (5 * HZ);
+	}
 #ifdef MY_OWN_DEBUG
 	printk ("Bye bye\n");
 #endif

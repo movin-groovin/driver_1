@@ -22,6 +22,7 @@
 #include <linux/completion.h>
 #include <linux/kernel.h> // simple_strtoul
 #include <linux/cred.h> // for commit_creds
+#include <asm/param.h> // HZ value
 
 
 
