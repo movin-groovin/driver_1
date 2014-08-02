@@ -473,14 +473,14 @@ ssize_t newRead (int fd, void *buf, size_t count) {
 		}
 		
 		atomic64_dec (& ssPtr[SYS_READ_NUM].numOfCalls);
-		if (!atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls) && atomic_read (&unlFlag)) {
+		if (!atomic64_read (& ssPtr[SYS_READ_NUM].numOfCalls) && atomic_read (&unlFlag)) {
 			complete (&synchUnload);
 		}
 		return ret;
 	}
 	else {
 		atomic64_dec (& ssPtr[SYS_READ_NUM].numOfCalls);
-		if (!atomic64_read (& ssPtr[SYS_DIRENT_NUM].numOfCalls) && atomic_read (&unlFlag)) {
+		if (!atomic64_read (& ssPtr[SYS_READ_NUM].numOfCalls) && atomic_read (&unlFlag)) {
 			complete (&synchUnload);
 		}
 		return -EIO;
@@ -634,6 +634,9 @@ module_exit(stop);
 MODULE_LICENSE ("GPL");
 
 
+//
+// This oops for bash process that have read /proc/net/tcp
+//
 /*
 [ 9227.724403] BUG: unable to handle kernel paging request at ffffffffa0557aab
 [ 9227.724994] IP: [<ffffffffa0557aab>] 0xffffffffa0557aaa
