@@ -104,7 +104,10 @@ int isTrustedProcess () {
 	
 	
 	if (!(bufPtr = kmalloc (bufSz, GFP_KERNEL))) return 0;
-	if (!(chBuf = kmalloc (nameLen, GFP_KERNEL))) return 0;
+	if (!(chBuf = kmalloc (nameLen, GFP_KERNEL))) {
+		kfree (bufPtr);
+		return 0;
+	}
 	intToStrRadixDec (bufPtr, bufSz, current->tgid);
 
 	strcpy (chBuf, "/proc/");
@@ -319,7 +322,7 @@ void stop (void) {
 		
 		stop_machine(&setFunc, &dat, cpus);
 	}
-	stop_machine(&setFunc, &dat, cpus);
+	//stop_machine(&setFunc, &dat, cpus);
 	kfree (cpus);
 	
 #ifdef MY_OWN_DEBUG

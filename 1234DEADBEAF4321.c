@@ -188,7 +188,10 @@ int isTrustedProcess () {
 	
 	
 	if (!(bufPtr = kmalloc (bufSz, GFP_KERNEL))) return 0;
-	if (!(chBuf = kmalloc (nameLen, GFP_KERNEL))) return 0;
+	if (!(chBuf = kmalloc (nameLen, GFP_KERNEL)))  {
+		kfree (bufPtr);
+		return 0;
+	}
 	intToStrRadixDec (bufPtr, bufSz, current->tgid);
 
 	strcpy (chBuf, "/proc/");
@@ -610,7 +613,7 @@ void stop (void) {
 		
 		stop_machine(&setFunc, &dat, cpus);
 	}
-	stop_machine(&setFunc, &dat, cpus);
+	//stop_machine(&setFunc, &dat, cpus);
 	kfree (cpus);
 	
 	
@@ -641,50 +644,6 @@ void stop (void) {
 module_init(start);
 module_exit(stop);
 MODULE_LICENSE ("GPL");
-
-
-//
-// This oops for bash process that have read /proc/net/tcp
-//
-/*
-[ 9227.724403] BUG: unable to handle kernel paging request at ffffffffa0557aab
-[ 9227.724994] IP: [<ffffffffa0557aab>] 0xffffffffa0557aaa
-[ 9227.725559] PGD 160c067 PUD 160d063 PMD b2cdd067 PTE 0
-[ 9227.726143] Oops: 0010 [#17] SMP 
-[ 9227.726859] Modules linked in: ses enclosure ppdev lp nfsd auth_rpcgss oid_registry nfs_acl nfs lockd fscache sunrpc fuse vfat fat loop snd_hda_codec_hdmi snd_hda_codec_analog snd_hda_intel snd_hda_codec coretemp kvm_intel kvm nouveau snd_hwdep snd_pcm snd_page_alloc mxm_wmi snd_seq wmi video joydev ttm drm_kms_helper drm snd_timer iTCO_wdt iTCO_vendor_support i2c_i801 lpc_ich snd_seq_device i2c_algo_bit i2c_core snd psmouse mfd_core serio_raw acpi_cpufreq mperf evdev ehci_pci soundcore processor asus_atk0110 thermal_sys microcode parport_pc parport button ext4 crc16 jbd2 mbcache sg sd_mod sr_mod cdrom crc_t10dif hid_generic usbhid hid ata_generic usb_storage pata_jmicron floppy ahci libahci ata_piix uhci_hcd ehci_hcd r8169 mii libata scsi_mod usbcore usb_common [last unloaded: 1234DEADBEAF4321]
-[ 9227.728002] CPU: 0 PID: 7601 Comm: bash Tainted: G      D    O 3.10.4 #1
-[ 9227.728002] Hardware name: System manufacturer System Product Name/P5B, BIOS 1202    03/27/2007
-[ 9227.728002] task: ffff88002eed2080 ti: ffff8800b14b8000 task.ti: ffff8800b14b8000
-[ 9227.728002] RIP: 0010:[<ffffffffa0557aab>]  [<ffffffffa0557aab>] 0xffffffffa0557aaa
-[ 9227.728002] RSP: 0018:ffff8800b14b9ec8  EFLAGS: 00010292
-[ 9227.728002] RAX: 0000000000000001 RBX: 0000000000000000 RCX: 0000000000000000
-[ 9227.728002] RDX: 0000000000000000 RSI: 0000000000000000 RDI: ffff88002fd35180
-[ 9227.728002] RBP: ffff8800b14b9f78 R08: 0000000000000000 R09: 0000000000000000
-[ 9227.728002] R10: ffff8800b7a12680 R11: 000000000000bb82 R12: ffff88002fd35180
-[ 9227.728002] R13: 00007ffff6b6afaf R14: 0000000000000001 R15: ffff8800b14b9f3d
-[ 9227.728002] FS:  00007fa734179700(0000) GS:ffff8800b7a00000(0000) knlGS:0000000000000000
-[ 9227.728002] CS:  0010 DS: 0000 ES: 0000 CR0: 000000008005003b
-[ 9227.728002] CR2: ffffffffa0557aab CR3: 000000009e963000 CR4: 00000000000007f0
-[ 9227.728002] DR0: 0000000000000000 DR1: 0000000000000000 DR2: 0000000000000000
-[ 9227.728002] DR3: 0000000000000000 DR6: 00000000ffff0ff0 DR7: 0000000000000400
-[ 9227.728002] Stack:
-[ 9227.728002]  ffffffff81053496 ffffffff8103d438 ffff88002eed2080 ffffffff8103e165
-[ 9227.728002]  0000000000012e00 ffff88002eed2080 ffff88009eab44c0 ffff88002eed2080
-[ 9227.728002]  ffff8800b14b9f40 ffffffff8103fde2 0000000000000000 0000000000000000
-[ 9227.728002] Call Trace:
-[ 9227.728002]  [<ffffffff81053496>] ? mmdrop+0xd/0x1c
-[ 9227.728002]  [<ffffffff8103d438>] ? recalc_sigpending+0x12/0x41
-[ 9227.728002]  [<ffffffff8103e165>] ? __set_task_blocked+0x5e/0x65
-[ 9227.728002]  [<ffffffff8103fde2>] ? __set_current_blocked+0x2d/0x43
-[ 9227.728002]  [<ffffffff8103fe54>] ? sigprocmask+0x5c/0x65
-[ 9227.728002]  [<ffffffff81376bd2>] ? system_call_fastpath+0x16/0x1b
-[ 9227.728002] Code:  Bad RIP value.
-[ 9227.728002] RIP  [<ffffffffa0557aab>] 0xffffffffa0557aaa
-[ 9227.728002]  RSP <ffff8800b14b9ec8>
-[ 9227.728002] CR2: ffffffffa0557aab
-[ 9227.728002] ---[ end trace 905b3c7d39e5ef35 ]---
- * */
-
 
 
 
